@@ -1,0 +1,121 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+  <title>Oldia Bot</title>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <style type="text/css">
+    body { background:#f5f5f5; color:#222; font-family: Arial, Helvetica, sans-serif; margin:0; padding:20px; text-align:center; }
+    #wrap { max-width:760px; margin:0 auto; }
+    #title { font-size:18px; margin:6px 0 12px 0; }
+    #chat { background:#fff; border:1px solid #ccc; height:420px; overflow:auto; padding:10px; text-align:left; }
+    .row { margin:6px 0; }
+    .u { color:#111; font-weight:bold; }
+    .b { color:#444; }
+    #bar { margin-top:8px; }
+    #msg { width:70%; padding:6px; border:1px solid #bbb; }
+    #send { padding:6px 12px; }
+    #hint { color:#666; font-size:12px; margin-top:6px; }
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <div id="title">Oldia Bot</div>
+    <div id="chat"></div>
+    <div id="bar">
+      <input id="msg" type="text" value="" autocomplete="off">
+      <button id="send" type="button">Envoyer</button>
+    </div>
+    <div id="hint">Aucune clé, aucune extension. Envoi via XMLHttpRequest → <span style="font-family:monospace">https://text.pollinations.ai/</span></div>
+  </div>
+
+<script type="text/javascript">
+// Compat événements
+function on(el, ev, fn){ if(el.addEventListener){ el.addEventListener(ev, fn, false); } else if(el.attachEvent){ el.attachEvent('on'+ev, fn); } else { el['on'+ev] = fn; } }
+function trim(s){ return s.replace(/^\s+|\s+$/g,''); }
+
+var chat = document.getElementById('chat');
+var input = document.getElementById('msg');
+var btn = document.getElementById('send');
+var busy = false;
+
+function add(role, text){
+  var div = document.createElement('div');
+  div.className = 'row ' + (role==='u'?'u':'b');
+  var who = role==='u' ? 'Vous: ' : 'Bot: ';
+  div.appendChild(document.createTextNode(who + text));
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function encodeQueryComponent(s){
+  // encodeURIComponent pour vieux prompts, en évitant les plus vieilles bizarreries
+  try { return encodeURIComponent(s); } catch(e){ return escape(s); }
+}
+
+function pollinationsRequest(prompt, cb){
+  var base = 'https://text.pollinations.ai/';
+  // On tente le JSON d'abord
+  var urlJson = base + encodeQueryComponent(prompt) + '?json=true&model=openai&system=' + encodeQueryComponent('Tu es un assistant français, concis et utile.');
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', urlJson, true);
+  xhr.onreadystatechange = function(){
+    if(xhr.readyState === 4){
+      if(xhr.status === 200){
+        try {
+          var data = JSON.parse(xhr.responseText);
+          if(data && data.choices && data.choices.length && data.choices[0].message && data.choices[0].message.content){
+            cb(null, data.choices[0].message.content);
+            return;
+          }
+        } catch(e){}
+        // Fallback au texte brut si JSON pas exploitable
+        pollinationsFallback(prompt, cb);
+      } else {
+        // Fallback si statut non-200 (ex: CORS exotique)
+        pollinationsFallback(prompt, cb);
+      }
+    }
+  };
+  try { xhr.send(null); } catch(e){ pollinationsFallback(prompt, cb); }
+}
+
+function pollinationsFallback(prompt, cb){
+  var base = 'https://text.pollinations.ai/';
+  var urlTxt = base + encodeQueryComponent(prompt);
+  var xhr2 = new XMLHttpRequest();
+  xhr2.open('GET', urlTxt, true);
+  xhr2.onreadystatechange = function(){
+    if(xhr2.readyState === 4){
+      if(xhr2.status === 200){ cb(null, xhr2.responseText); }
+      else { cb(new Error('HTTP '+xhr2.status), '(pas de réponse)'); }
+    }
+  };
+  try { xhr2.send(null); } catch(e){ cb(e, '(erreur d\'envoi)'); }
+}
+
+function send(){
+  if(busy) return; // éviter le spam
+  var text = trim(input.value);
+  if(!text){ return; }
+  input.value = '';
+  add('u', text);
+  busy = true; btn.disabled = true;
+
+  pollinationsRequest(text, function(err, reply){
+    busy = false; btn.disabled = false;
+    if(err){ add('b', '(erreur) ' + (''+err)); }
+    // Nettoyage basique: trim et supprimer espaces moches
+    reply = trim((''+reply).replace(/\s+/g,' '));
+    if(!reply){ reply = '(réponse vide)'; }
+    add('b', reply);
+  });
+}
+
+on(btn, 'click', send);
+on(input, 'keydown', function(e){ e = e||window.event; var k = e.keyCode||e.which||0; if(k===13){ send(); return false; } });
+
+// Message d'accueil
+setTimeout(function(){ add('b', 'Salut. Moi c\'est Oldia. Que tu sois sous ta version la plus brillante de ton OS ou que tu tournes sous un XP claqué, je peux discuter.'); }, 10);
+</script>
+</body>
+</html>
